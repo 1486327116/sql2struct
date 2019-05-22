@@ -20,7 +20,7 @@ new Vue({
         }
         var that = this
         // 获取缓存数据
-        chrome.runtime.sendMessage(message, function(res) {
+        chrome.runtime.sendMessage(message, function (res) {
             if (!res) { // 不存在缓存数据
                 // 初始配置数据
                 var data = {
@@ -65,13 +65,17 @@ new Vue({
                 return
             }
             var types = this.typeMap
-            var structResult = 'type '
+            var info = '/* V20190522  The default pk is ID , if u pk not is ID, u need to add the tag `gorm:"primary_key"` on the right struct member */\n'
+            var structResult = info + 'type '
+            var tbName
+            var structName
             for (var i = 0, len = res.length; i < len; i++) {
                 var field = res[i].match(/\`(.+)\`\s+(tinyint|smallint|int|mediumint|bigint|float|double|decimal|varchar|char|text|mediumtext|longtext|datetime|time|date|enum|set|blob)?/)
                 if (i == 0) {   // 第一个字段为数据表名称
                     if (field && field[1] != undefined && field[2] == undefined) {
-                        var tbName = titleCase(field[1])
-                        structResult += tbName + ' struct {'
+                        structName = titleCase(field[1])
+                        tbName = field[1]
+                        structResult += structName + ' struct {'
                         continue
                     } else {
                         return
@@ -82,13 +86,19 @@ new Vue({
                             var fieldName = titleCase(field[1])
                             var fieldType = types[field[2]]
                             var fieldJsonName = field[1].toLowerCase()
+                            if (fieldJsonName == "createdat") {
+                                fieldJsonName = "createdAt"
+                            }
+                            if (fieldJsonName == "updatedat") {
+                                fieldJsonName = "updatedAt"
+                            }
                             if (fieldName.toLowerCase() == 'id') {
                                 fieldName = 'ID'
                             }
                             structResult += '\n\t' + fieldName + ' ' + fieldType + ' '
                             structArr = []
                             if (this.useGorm) {
-                                structArr.push('gorm:"column:'+ fieldJsonName +'"')
+                                structArr.push('gorm:"column:' + fieldJsonName + '"')
                             }
                             if (this.useJson) {
                                 structArr.push('json:"' + fieldJsonName + '"')
@@ -97,7 +107,7 @@ new Vue({
                                 structArr.push('form:"' + fieldJsonName + '"')
                             }
                             if (structArr.length > 0) {
-                                structResult += '`'+structArr.join(' ')+'`'
+                                structResult += '`' + structArr.join(' ') + '`'
                             }
                         } else {
                             continue
@@ -107,7 +117,15 @@ new Vue({
                     }
                 }
             }
-            structResult += '\n}'
+            structResult += '\n}\n\n'
+            //add tableName
+            structResult += 'func (' + structName + ') TableName() string {\n' +
+                '\treturn "' + tbName + '"\n' +
+                '}\n\n'
+            //add getdb
+            structResult += 'func (*'+structName+') GetDB() (db *gorm.DB) {\n' +
+                '\treturn nil  //todo return the table-bind *DB\n' +
+                '}\n\n'
             this.structContent = structResult
         },
         typeMapStr(val) {
@@ -160,31 +178,36 @@ new Vue({
         }
     },
     methods: {
-      handleSelect(key, keyPath) {
-        
-      },
-      setCache(data) {
-        var message = {
-            act: 'setOptions',
-            data: JSON.stringify(data)
+        handleSelect(key, keyPath) {
+
+        },
+        setCache(data) {
+            var message = {
+                act: 'setOptions',
+                data: JSON.stringify(data)
+            }
+            chrome.runtime.sendMessage(message, function (res) {
+                //console.log(res)
+            })
         }
-        chrome.runtime.sendMessage(message, function(res) {
-            //console.log(res)
-        })
-      }
     }
 })
 
 // 首字母大写
 function titleCase(str) {
 
-  var array = str.toLowerCase().split("_");
-  for (var i = 0; i < array.length; i++){
-    array[i] = array[i][0].toUpperCase() + array[i].substring(1, array[i].length);
-  }
-  var string = array.join("");
-
-  return string;
+    var array = str.toLowerCase().split("_");
+    for (var i = 0; i < array.length; i++) {
+        array[i] = array[i][0].toUpperCase() + array[i].substring(1, array[i].length);
+    }
+    var string = array.join("");
+    if (string == "Createdat") {
+        string = "CreatedAt"
+    }
+    if (string == "Updatedat") {
+        string = "UpdatedAt"
+    }
+    return string;
 }
 
 // 类型映射
@@ -209,6 +232,6 @@ function getTypeMap() {
         'timestramp': 'int64',
         'enum': 'string',
         'set': 'string',
-        'blob': 'string' 
+        'blob': 'string'
     }
 }
